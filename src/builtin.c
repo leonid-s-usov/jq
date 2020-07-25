@@ -1898,7 +1898,7 @@ static block bind_bytecoded_builtins(block b) {
        * use up to three instructions (the RET_JQ doesn't execute in the case of
        * `empty`, naturally) to execute just one.
        *
-       * We should inline `empty` and `unwinding` at least.
+       * We should inline `empty` and `protect` at least.
        */
       builtins = BLOCK(builtins, gen_function(builtin_defs[i].name, gen_noop(),
                                               builtin_defs[i].code));

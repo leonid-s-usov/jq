@@ -800,7 +800,7 @@ static jv builtin_jq_spawn(jq_state *jq, jv input) {
 JQ_BUILTIN_INIT_FUN(builtin_jq_io_init,
                  "def fopen($fn; $mode; $inopts; $outopts): \n"
                  "    _fopen($fn; $mode; $inopts; $outopts)\n"
-                 "  | . as $fh | unwind($fh|fhclose?);\n"
+                 "  | . as $fh | protect($fh|fhclose?);\n"
                  "def fopen($fn; $mode): fopen($fn; $mode; null; null);\n"
                  "def fopen($fn): fopen($fn; \"r\");\n"
                  "def fopen: fopen(.; \"r\");\n"
@@ -837,7 +837,7 @@ JQ_BUILTIN_INIT_FUN(builtin_jq_spawn_init,
                  /*
                   * XXX What about non-stdio handles?
                   *
-                  * XXX Add a spawn attribute for "kill/wait on unwind"?  Or
+                  * XXX Add a spawn attribute for "kill/wait on protect"?  Or
                   * let the app do it?
                   *
                   * Anyways, programs that spawn w/o stdout/stderr pipes should
@@ -864,7 +864,7 @@ JQ_BUILTIN_INIT_FUN(builtin_jq_spawn_init,
                  "def _spawn:\n"
                  "    __spawn\n"
                  "  | . as $res\n"
-                 "  | unwind(  $res\n"
+                 "  | protect (  $res\n"
                  "           | ((.stdin_handle|fhclose?),\n"
                  "              (.stdout_handle|fhclose?),\n"
                  "              (.stderr_handle|fhclose?),\n"
@@ -887,7 +887,7 @@ JQ_BUILTIN_INIT_FUN(builtin_jq_spawn_init,
 JQ_BUILTIN_INIT_FUN(builtin_jq_proc_init,
                  "def popen($fn; $mode; $opts): \n"
                  "    _popen($fn; $mode; $opts)\n"
-                 "  | . as $fh | unwind($fh|fhclose?);\n"
+                 "  | . as $fh | protect($fh|fhclose?);\n"
                  "def popen($fn; $mode): popen($fn; $mode; null);\n"
                  "def popen($fn): popen($fn; \"r\");\n"
                  "def popen: popen(.; \"r\");\n"

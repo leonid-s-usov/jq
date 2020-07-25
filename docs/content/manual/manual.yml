@@ -2975,15 +2975,14 @@ sections:
 
           Returns the line number of the input currently being filtered.
 
-      - title: "`unwind(protect) | rest`"
+      - title: "`protect(handler) | rest`"
         body: |
 
-          Executes `protect|empty` when the `rest` produces no further
+          Executes `handler|empty` when the `rest` produces no further
           outputs, or when the `rest` raises an error, or `break`s out.
 
-          The input to `protect` will be `true` as input if no error was
-          raised, else with the error produced by `rest`, wrapped in an
-          array, as input.
+          When fired, the handler will be run 
+          with an input of {.raising=<bool> [.error=<error>]}
 
           This is useful for, for example, writing a footer to a file
           after writing its contents.
