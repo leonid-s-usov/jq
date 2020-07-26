@@ -2554,7 +2554,7 @@ yyreduce:
   block main_loop = BLOCK (
     gen_op_simple(START),
     (yyvsp[0].blk), // call_main
-    gen_op_simple(TAIL_OUT)
+    gen_op_simple(TAIL_IO)
   );
 
   *answer = BLOCK((yyvsp[-2].blk), (yyvsp[-1].blk), gen_marker(TOP), main_loop);

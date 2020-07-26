@@ -1865,7 +1865,7 @@ static block public_inlines(void) {
       {"error", gen_op_simple(RAISE)},
       {"not", gen_condbranch(gen_const(jv_false()),
                              gen_const(jv_true()))},
-      {"output", gen_op_simple(OUT)},
+      {"io", gen_op_simple(IO)},
     };
     for (unsigned i=0; i<sizeof(builtin_defs)/sizeof(builtin_defs[0]); i++) {
       builtins = BLOCK(builtins, gen_function(builtin_defs[i].name, gen_noop(),

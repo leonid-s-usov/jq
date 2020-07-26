@@ -6,8 +6,8 @@ OP(TOP, MARKER, 0, 0)
 
 // Instructions for input, output and coroutine creation
 OP(START, NONE, 0, 1)
-OP(OUT, NONE, 1, 0)
-OP(TAIL_OUT, BT(NONE), 1, 0)
+OP(IO, NONE, 1, 0)
+OP(TAIL_IO, BT(NONE), 1, 0)
 
 OP(COEVAL, NONE, 1, 1)
 OP(COCREATE, BRANCH, 1, 1)

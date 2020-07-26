@@ -1665,19 +1665,22 @@ jv jq_next(jq_state *jq) {
       goto do_backtrack;
     }
 
-    case TAIL_OUT: {
-      // optimized version of OUT;BACKTRACK
+    case TAIL_IO: {
+      // optimized version of IO;BACKTRACK
+      // in this case we really don't want to generate 
+      // a dummy forkpoint and will simply backtrack to the
+      // previous forkpoint upon return from an IO
       jv value = stack_pop(jq);
       return value;
     }
-    case OUT: {
+
+    case IO: {
       jv value = stack_pop(jq);
       stack_save(jq, BT_DESC_NEXT_VALUE,  pc - 1, stack_get_pos(jq));
       return value;
     }
-    case ON_BACKTRACK(OUT): {
-      // stop backtracking, 
-      // move on
+    case ON_BACKTRACK(IO): {
+      // we returned from an IO, just move on
       break;
     }
 

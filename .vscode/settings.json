@@ -3,6 +3,10 @@
         "__config": "c",
         "__nullptr": "c",
         "type_traits": "c",
-        "limits": "c"
+        "limits": "c",
+        "*.inc": "cpp",
+        "algorithm": "cpp",
+        "complex": "cpp",
+        "new": "cpp"
     }
 }

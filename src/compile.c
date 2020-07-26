@@ -1154,7 +1154,7 @@ block gen_foreach(block source, block matcher, block init, block update, block e
 block gen_coexpression_with_param_name(const char* param) {
   block cobody = BLOCK(gen_op_simple(START),
                        gen_call(param, gen_noop()),
-                       gen_op_simple(TAIL_OUT));
+                       gen_op_simple(TAIL_IO));
   block cocreate = gen_op_target(COCREATE, cobody);
   return BLOCK(cocreate, cobody);
 }
