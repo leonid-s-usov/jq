@@ -10,7 +10,7 @@
 #include <float.h>
 
 #include "jv_alloc.h"
-#include "jv.h"
+#include "jv_internal.h"
 #include "jv_unicode.h"
 #include "util.h"
 
@@ -26,10 +26,6 @@
 /*
  * Internal refcounting helpers
  */
-
-typedef struct jv_refcnt {
-  int count;
-} jv_refcnt;
 
 static const jv_refcnt JV_REFCNT_INIT = {1};
 
@@ -71,6 +67,7 @@ typedef enum {
 #define JVP_FLAGS_INVALID   JVP_MAKE_FLAGS(JV_KIND_INVALID, JVP_PAYLOAD_NONE)
 #define JVP_FLAGS_FALSE     JVP_MAKE_FLAGS(JV_KIND_FALSE, JVP_PAYLOAD_NONE)
 #define JVP_FLAGS_TRUE      JVP_MAKE_FLAGS(JV_KIND_TRUE, JVP_PAYLOAD_NONE)
+#define JVP_FLAGS_CSTRUCT   JVP_MAKE_FLAGS(JV_KIND_CSTRUCT, JVP_PAYLOAD_ALLOCATED)
 
 jv_kind jv_get_kind(jv x) {
   return JVP_KIND(x);
@@ -86,6 +83,7 @@ const char* jv_kind_name(jv_kind k) {
   case JV_KIND_STRING:  return "string";
   case JV_KIND_ARRAY:   return "array";
   case JV_KIND_OBJECT:  return "object";
+  case JV_KIND_CSTRUCT: return "cstruct";
   }
   assert(0 && "invalid kind");
   return "<unknown>";
@@ -110,6 +108,30 @@ jv jv_null() {
 
 jv jv_bool(int x) {
   return x ? JV_TRUE : JV_FALSE;
+}
+
+jv jv_cstruct(void* cstruct, cstruct_free_f free){
+  jvp_cstruct_header* header = jv_mem_alloc(sizeof(jvp_cstruct_header));
+  header->cstruct = cstruct;
+  header->refcnt = JV_REFCNT_INIT;
+  header->free = free;
+  return {JVP_FLAGS_CSTRUCT, 0, 0, 0, {&header->refcnt}};
+}
+
+void * jv_cstruct_copy_get_value(jv j){
+  assert(JVP_HAS_KIND(j, JV_KIND_CSTRUCT));
+  return ((jvp_cstruct_header*)j.u.ptr)->cstruct;
+}
+
+static void jv_cstruct_free(jv j) {
+  assert(JVP_HAS_KIND(j, JV_KIND_CSTRUCT));
+  if (jvp_refcnt_dec(j.u.ptr)) {
+    jvp_cstruct_header* h = (jvp_cstruct_header*)j.u.ptr;
+    if (h->free) {
+      h->free(h->cstruct);
+    }
+    jv_mem_free(h);
+  }
 }
 
 /*
@@ -1595,6 +1617,9 @@ void jv_free(jv j) {
       break;
     case JV_KIND_NUMBER:
       jvp_number_free(j);
+      break;
+    case JV_KIND_CSTRUCT:
+      jvp_cstruct_free(j);
       break;
   }
 }

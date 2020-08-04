@@ -6,32 +6,27 @@
 #include <stdlib.h>
 #include <stdint.h>
 
-typedef jv (*jq_fhclose_f)(jq_state *, jv, void *);
-typedef jv (*jq_fhreset_f)(jq_state *, jv, void *);
-typedef jv (*jq_fhwrite_f)(jq_state *, jv, void *, jv);
-typedef jv (*jq_fhread_f)(jq_state *, jv, void *);
-typedef jv (*jq_fhstat_f)(jq_state *, jv, void *);
-typedef jv (*jq_fheof_f)(jq_state *, jv, void *);
+typedef void* (*jq_hopen_f)(jq_state *, jv uri, jv* error);
+typedef jv (*jq_hclose_f)(jq_state *, void *, jv input);
+typedef jv (*jq_hreset_f)(jq_state *, void *, jv input);
+typedef jv (*jq_heof_f)(jq_state *, void *, jv input);
+typedef jv (*jq_hio_f)(jq_state *, void *, jv input, jv arg);
 
 struct jq_io_table {
-  const char *kind;
-  jq_fhclose_f fhclose;
-  jq_fhreset_f fhreset;
-  jq_fhwrite_f fhwrite;
-  jq_fhread_f fhread;
-  jq_fhstat_f fhstat;
-  jq_fheof_f fheof;
+  jq_hopen_f open;
+  jq_hclose_f close;
+  jq_hreset_f reset;
+  jq_heof_f at_eof;
+  jq_hio_f io;
 };
 
-void *jq_handle_get(jq_state *, jv);
-jv jq_handle_get_kind(jq_state *, jv);
-jv jq_handle_new(jq_state *, const char *, struct jq_io_table *, void *);
-jv jq_handle_close(jq_state *jq, jv jhandle);
-jv jq_handle_reset(jq_state *jq, jv jhandle);
-jv jq_handle_write(jq_state *jq, jv jhandle, jv);
-jv jq_handle_read(jq_state *jq, jv jhandle);
-jv jq_handle_stat(jq_state *jq, jv jhandle);
-jv jq_handle_eof(jq_state *jq, jv jhandle);
+jv jq_handle_register_scheme(jq_state * jq, const char * scheme, struct jq_io_table * io_table);
+
+jv jq_handle_open(jq_state *jq, jv uri);
+jv jq_handle_close(jq_state *jq, jv jhandle, jv input);
+jv jq_handle_reset(jq_state *jq, jv jhandle, jv input);
+jv jq_handle_io(jq_state *jq, jv jhandle, jv input, jv arg);
+jv jq_handle_at_eof(jq_state *jq, jv jhandle, jv input);
 
 
 #define MAX_CFUNCTION_ARGS 10
@@ -60,15 +55,12 @@ typedef jv (*jq_io_policy_check_f)(jq_state *, jv);
 typedef jv (*jq_set_io_policy_f)(jq_state *, jv);
 typedef void (*jq_set_attr_f)(jq_state*,jv,jv);
 typedef void (*jq_set_attrs_f)(jq_state*,jv);
-typedef void * (*jq_handle_get_f)(jq_state*,jv);
-typedef jv (*jq_handle_get_kind_f)(jq_state *, jv);
-typedef jv (*jq_handle_new_f)(jq_state *, const char *, struct jq_io_table *, void *);
-typedef jv (*jq_handle_close_f)(jq_state *jq, jv jhandle);
-typedef jv (*jq_handle_reset_f)(jq_state *jq, jv jhandle);
-typedef jv (*jq_handle_write_f)(jq_state *jq, jv jhandle, jv);
-typedef jv (*jq_handle_read_f)(jq_state *jq, jv jhandle);
-typedef jv (*jq_handle_stat_f)(jq_state *jq, jv jhandle);
-typedef jv (*jq_handle_eof_f)(jq_state *jq, jv jhandle);
+typedef jv (*jq_handle_register_scheme_f)(jq_state *, const char *, struct jq_io_table *);
+typedef jv (*jq_handle_open_f)(jq_state *, jv);
+typedef jv (*jq_handle_close_f)(jq_state *, jv);
+typedef jv (*jq_handle_reset_f)(jq_state *, jv);
+typedef jv (*jq_handle_io_f)(jq_state *, jv, jv, jv);
+typedef jv (*jq_handle_at_eof_f)(jq_state *, jv);
 typedef jv (*jq_get_lib_dirs_f)(jq_state*);
 typedef jv (*jq_get_prog_origin_f)(jq_state*);
 typedef jv (*jq_get_jq_origin_f)(jq_state*);
@@ -200,15 +192,12 @@ struct jq_plugin_vtable {
   jq_set_attr_f jq_set_attr;
   jq_set_attrs_f jq_set_attrs;
   jq_get_lib_dirs_f jq_get_lib_dirs;
-  jq_handle_get_kind_f jq_handle_get_kind;
-  jq_handle_get_f jq_handle_get;
-  jq_handle_new_f jq_handle_new;
+  jq_handle_register_scheme_f jq_handle_get_kind;
+  jq_handle_open_f jq_handle_get;
   jq_handle_close_f jq_handle_close;
   jq_handle_reset_f jq_handle_reset;
-  jq_handle_write_f jq_handle_write;
-  jq_handle_read_f jq_handle_read;
-  jq_handle_stat_f jq_handle_stat;
-  jq_handle_eof_f jq_handle_eof;
+  jq_handle_io_f jq_handle_write;
+  jq_handle_at_eof_f jq_handle_read;
   jq_get_prog_origin_f jq_get_prog_origin;
   jq_get_jq_origin_f jq_get_jq_origin;
   jq_compile_f jq_compile;
@@ -459,14 +448,12 @@ struct jq_plugin_vtable {
 #define jv_object ((*(struct jq_plugin_vtable **)jq)->jv_object)
 #define jv_keys ((*(struct jq_plugin_vtable **)jq)->jv_keys)
 #define jq_set_attrs ((*(struct jq_plugin_vtable **)jq)->jq_set_attrs)
-#define jq_handle_get ((*(struct jq_plugin_vtable **)jq)->jq_handle_get)
-#define jq_handle_get_kind ((*(struct jq_plugin_vtable **)jq)->jq_handle_get_kind)
-#define jq_handle_new ((*(struct jq_plugin_vtable **)jq)->jq_handle_new)
+#define jq_handle_register_scheme ((*(struct jq_plugin_vtable **)jq)->jq_handle_register_scheme)
+#define jq_handle_open ((*(struct jq_plugin_vtable **)jq)->jq_handle_open)
 #define jq_handle_close ((*(struct jq_plugin_vtable **)jq)->jq_handle_close)
 #define jq_handle_reset ((*(struct jq_plugin_vtable **)jq)->jq_handle_reset)
-#define jq_handle_write ((*(struct jq_plugin_vtable **)jq)->jq_handle_write)
-#define jq_handle_read ((*(struct jq_plugin_vtable **)jq)->jq_handle_read)
-#define jq_handle_eof ((*(struct jq_plugin_vtable **)jq)->jq_handle_eof)
+#define jq_handle_io ((*(struct jq_plugin_vtable **)jq)->jq_handle_io)
+#define jq_handle_at_eof ((*(struct jq_plugin_vtable **)jq)->jq_handle_at_eof)
 #endif /* JQ_PLUGIN */
 /* GENERATED BY dwarf2h END */
 
