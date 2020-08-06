@@ -86,7 +86,6 @@ struct lexer_param;
 %token LESSEQ "<="
 %token GREATEREQ ">="
 %token ALTERNATION "?//"
-%token COEXPR "@@"
 
 %token QQSTRING_START
 %token <literal> QQSTRING_TEXT
@@ -321,7 +320,7 @@ Module Imports Exp {
   block main_loop = BLOCK (
     gen_op_simple(START),
     $3, // call_main
-    gen_op_simple(TAIL_OUT)
+    gen_op_simple(OUT)
   );
 
   *answer = BLOCK($1, $2, gen_marker(TOP), main_loop);

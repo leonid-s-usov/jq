@@ -9,7 +9,6 @@
 #include <fileapi.h>
 #endif
 
-#include "jv.h"
 #include "jv_dtoa.h"
 #include "jv_dtoa_tsd.h"
 #include "jv_unicode.h"
@@ -28,12 +27,12 @@
 // for how to choose these.
 static const jv_kind color_kinds[] =
   {JV_KIND_NULL,   JV_KIND_FALSE, JV_KIND_TRUE, JV_KIND_NUMBER,
-   JV_KIND_STRING, JV_KIND_ARRAY, JV_KIND_OBJECT};
+   JV_KIND_STRING, JV_KIND_ARRAY, JV_KIND_OBJECT, JV_KIND_CSTRUCT};
 static char color_bufs[sizeof(color_kinds)/sizeof(color_kinds[0])][16];
 static const char *color_bufps[8];
 static const char* def_colors[] =
   {COL("1;30"),    COL("0;37"),      COL("0;37"),     COL("0;37"),
-   COL("0;32"),      COL("1;37"),     COL("1;37")};
+   COL("0;32"),    COL("1;37"),      COL("1;37"),     COL("1;35")};
 #define FIELD_COLOR COL("34;1")
 
 static const char **colors = def_colors;
@@ -362,6 +361,16 @@ static void jv_dump_term(struct dtoa_context* C, jv x, int flags, int indent, FI
     }
     if (color) put_str(color, F, S, flags & JV_PRINT_ISATTY);
     put_char('}', F, S, flags & JV_PRINT_ISATTY);
+  }
+  case JV_KIND_CSTRUCT: {
+    if (flags & JV_PRINT_REFCOUNT)
+      put_refcnt(C, refcnt, F, S, flags & JV_PRINT_ISATTY);
+    char buf[32];
+    put_str(
+      snprintf(buf, sizeof(buf), "\"<cstruct@%016xll>\"", jv_cstruct_copy_get_ptr(x)), 
+      F, S, flags & JV_PRINT_ISATTY
+    );
+    break;
   }
   }
   jv_free(x);

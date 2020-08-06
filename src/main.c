@@ -178,7 +178,8 @@ static const char *skip_shebang(const char *p) {
 
 static int process(jq_state *jq, jv value, int flags, int dumpopts) {
   int ret = JQ_OK_NO_OUTPUT; // No valid results && -e -> exit(4)
-  jq_start(jq, value, flags);
+  jq_set_debug_flags(jq, flags);
+  jq_start(jq, value);
   jv result;
   while (jv_is_valid(result = jq_next(jq))) {
     if ((options & RAW_OUTPUT) && jv_get_kind(result) == JV_KIND_STRING) {

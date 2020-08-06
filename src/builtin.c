@@ -1605,75 +1605,6 @@ static jv f_now(jq_state *jq, jv a) {
 }
 #endif
 
-static jv f_vmid(jq_state *jq, jv a) {
-  jv_free(a);
-  return jq_get_vmid(jq);
-}
-
-static jv coreset(jq_state *parent, jv input, void *vchild) {
-  jq_state *child = vchild;
-  jq_start(child, jv_null(), 0);
-  jv_free(input);
-  return jv_true();
-}
-
-static jv coinput_cb(jq_state *child, void *vjv) {
-  jv *jvp = vjv;
-  jv ret;
-
-  if (jv_is_valid(*jvp) || jv_invalid_has_msg(jv_copy(*jvp))) {
-    ret = *jvp;
-    *jvp = jv_invalid();
-    return ret;
-  }
-  return jv_invalid();
-}
-
-static jv cowrite(jq_state *parent, jv handle, void *vchild, jv v) {
-  jq_state *child = vchild;
-  jq_input_cb junk;
-  jv *jvp;
-  jq_get_input_cb(child, &junk, (void **)&jvp);
-  jv_free(*jvp);
-  *jvp = jv_copy(v);
-  jv_free(handle);
-  return v;
-}
-
-static jv coread(jq_state *parent, jv handle, void *vchild) {
-  jq_state *child = vchild;
-  jv_free(handle);
-  if (child == parent)
-    return jv_invalid_with_msg(jv_string("Co-routines cannot call themselves"));
-  if (jq_finished(child))
-    return jv_invalid();
-  return jq_next(child);
-}
-
-static jv coeof(jq_state *parent, jv handle, void *vchild) {
-  jq_state *child = vchild;
-  jv_free(handle);
-  return jq_finished(child) ? jv_true() : jv_false();
-}
-
-static jv coclose(jq_state *parent, jv handle, void *vchild) {
-  jq_state *child = vchild;
-  if (child)
-    jq_teardown(&child);
-  jv_free(handle);
-  return jv_true();
-}
-
-struct jq_io_table jq__covt = {
-  .kind = "coroutine",
-  .fhclose = coclose,
-  .fhreset = coreset,
-  .fhwrite = cowrite,
-  .fhread = coread,
-  .fhstat = 0,
-  .fheof = coeof,
-};
-
 static jv f_random_int(jq_state *jq, jv a) {
   jv_free(a);
   return jv_number_random_int();
@@ -1797,19 +1728,11 @@ static const struct cfunction function_list[] = {
   {(cfunction_ptr)f_gmtime, "gmtime", 1, 1, 1},
   {(cfunction_ptr)f_localtime, "localtime", 1, 1, 1},
   {(cfunction_ptr)f_now, "now", 1, 0, 1},
-  {(cfunction_ptr)f_vmid, "vmid", 1, 0, 1},
   {(cfunction_ptr)f_random_int, "random", 1, 0, 1},
   {(cfunction_ptr)f_random_bytes, "randombytes", 1, 0, 1},
   {(cfunction_ptr)f_random_string, "randomstring", 1, 0, 1},
   {(cfunction_ptr)f_current_filename, "input_filename", 1, 0, 1},
   {(cfunction_ptr)f_current_line, "input_line_number", 1, 0, 1},
-  {(cfunction_ptr)jq_handle_get_kind, "fhkind", 1, 0, 1},
-  {(cfunction_ptr)jq_handle_close, "fhclose", 1, 0, 1},
-  {(cfunction_ptr)jq_handle_reset, "fhreset", 1, 0, 1},
-  {(cfunction_ptr)jq_handle_write, "fhwrite", 2, 0, 1},
-  {(cfunction_ptr)jq_handle_read, "fhread", 1, 0, 1},
-  {(cfunction_ptr)jq_handle_stat, "fhstat", 1, 0, 1},
-  {(cfunction_ptr)jq_handle_eof, "fheof", 1, 0, 1},
 };
 #undef LIBM_DDDD_NO
 #undef LIBM_DDD_NO
@@ -1865,7 +1788,6 @@ static block public_inlines(void) {
       {"error", gen_op_simple(RAISE)},
       {"not", gen_condbranch(gen_const(jv_false()),
                              gen_const(jv_true()))},
-      {"io", gen_op_simple(IO)},
     };
     for (unsigned i=0; i<sizeof(builtin_defs)/sizeof(builtin_defs[0]); i++) {
       builtins = BLOCK(builtins, gen_function(builtin_defs[i].name, gen_noop(),
@@ -1874,7 +1796,6 @@ static block public_inlines(void) {
   }
   {
     struct bytecoded_builtin builtin_def_1arg[] = {
-      {"coexp", gen_coexpression_with_param_name("arg")},
       {"protect", gen_protect_with_param_name("arg")}
     };
     for (unsigned i=0; i<sizeof(builtin_def_1arg)/sizeof(builtin_def_1arg[0]); i++) {

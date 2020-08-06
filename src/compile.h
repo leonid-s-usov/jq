@@ -8,7 +8,6 @@
 struct inst;
 typedef struct inst inst;
 
-
 typedef struct block {
   inst* first;
   inst* last;
@@ -60,12 +59,14 @@ block gen_array_matcher(block left, block curr);
 block gen_object_matcher(block name, block curr);
 block gen_destructure(block var, block matcher, block body);
 block gen_destructure_alt(block matcher);
-block gen_coexpression_with_param_name(const char* param);
 block gen_protect_with_param_name(const char* param);
 
 block gen_cond(block cond, block iftrue, block iffalse);
 block gen_try(block exp, block handler);
 block gen_label(const char *label, block exp);
+
+block gen_coexpression(block body);
+block gen_coeval(block program);
 
 block gen_cbinding(const struct cfunction* functions, int nfunctions, block b);
 

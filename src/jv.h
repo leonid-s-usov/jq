@@ -32,10 +32,29 @@ typedef struct {
   } u;
 } jv;
 
+typedef void (*cstruct_free_f)(void *cstruct);
+
+
+
 /*
  * All jv_* functions consume (decref) input and produce (incref) output
- * Except jv_copy
+ * 
+ * jv_*_copy_* will behave as if the passed in value has been copied first
+ * so no decref will happen
+ * 
+ * There are a number of unfortunate exceptions to the consume rule
+ * the following function DO NOT consume their argument
+ * - jv_copy
+ * - jv_get_kind
+ * - jv_get_refcnt
+ * - jv_is_valid
+ * - jv_number_value
+ * - jv_is_integer
+ * - jv_string_value
  */
+
+jv jv_cstruct(void* cstruct, cstruct_free_f free);
+void * jv_cstruct_copy_get_ptr(jv j);
 
 jv_kind jv_get_kind(jv);
 const char* jv_kind_name(jv_kind);

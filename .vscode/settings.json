@@ -28,7 +28,10 @@
         "string_view": "cpp",
         "unordered_map": "cpp",
         "utility": "cpp",
-        "vector": "cpp"
+        "vector": "cpp",
+        "__string": "c",
+        "ios": "c",
+        "typeinfo": "cpp"
     },
     "cmake.configureOnOpen": false
 }

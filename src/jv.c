@@ -10,7 +10,6 @@
 #include <float.h>
 
 #include "jv_alloc.h"
-#include "jv_internal.h"
 #include "jv_unicode.h"
 #include "util.h"
 
@@ -22,6 +21,16 @@
 #include "decNumber/decNumber.h"
 
 #include "jv_type_private.h"
+
+typedef struct jv_refcnt {
+    int count;
+} jv_refcnt;
+
+typedef struct jvp_cstruct_header {
+  struct jv_refcnt refcnt;
+  cstruct_free_f free;
+  void *cstruct;
+} jvp_cstruct_header;
 
 /*
  * Internal refcounting helpers
@@ -115,15 +124,16 @@ jv jv_cstruct(void* cstruct, cstruct_free_f free){
   header->cstruct = cstruct;
   header->refcnt = JV_REFCNT_INIT;
   header->free = free;
-  return {JVP_FLAGS_CSTRUCT, 0, 0, 0, {&header->refcnt}};
+  jv r = { JVP_FLAGS_CSTRUCT, 0, 0, 0, {&header->refcnt} };
+  return r;
 }
 
-void * jv_cstruct_copy_get_value(jv j){
+void * jv_cstruct_copy_get_ptr(jv j){
   assert(JVP_HAS_KIND(j, JV_KIND_CSTRUCT));
   return ((jvp_cstruct_header*)j.u.ptr)->cstruct;
 }
 
-static void jv_cstruct_free(jv j) {
+static void jvp_cstruct_free(jv j) {
   assert(JVP_HAS_KIND(j, JV_KIND_CSTRUCT));
   if (jvp_refcnt_dec(j.u.ptr)) {
     jvp_cstruct_header* h = (jvp_cstruct_header*)j.u.ptr;

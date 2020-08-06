@@ -5,12 +5,10 @@
 #include <stdint.h>
 
 #include "jv.h"
-#include "jq_handle.h"
+#include "jq_io_builtin.h"
 
 #include "exec_stack.h"
 #include "bytecode.h"
-
-struct jq_plugin_vtable vtable;
 
 enum bt_priority {
   BT_PRIO_NONE = 0,
@@ -115,7 +113,6 @@ struct jq_state {
   jv value_at_path;
   int subexp_nest;
   int debug_flags;
-  int initial_execution;
   unsigned next_label;
 
   unsigned int halted;
@@ -123,21 +120,13 @@ struct jq_state {
   jv exit_code;
   jv error_message;
 
-  jv vmid;
-  jv rnd;
   jv attrs;
   jq_input_cb input_cb;
   void *input_cb_data;
   jq_msg_cb debug_cb;
   void *debug_cb_data;
 
-  /*
-   * backward compatible start input
-   * instead of storing it on the stack
-   */
   jv start_input;
-  jq_input_mode input_mode;
-
   /*
    * I/O schemes.
    *

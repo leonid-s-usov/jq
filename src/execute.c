@@ -367,26 +367,15 @@ static void jq_reset(jq_state *jq) {
   jq->exit_code = jv_invalid();
   jq->error_message = jv_invalid();
 
-  if (jq->handles == &jq->handles_s) {
-    if (jv_is_valid(jq->handles->jhandles)) {
-      jv_array_foreach(jq->handles->jhandles, i, v) {
-        if (jv_is_valid(v) && i > -1 && (size_t)i < jq->handles->nhandles)
-          jv_free(jq_handle_close(jq, v));
-      }
-    }
-    jv_free(jq->handles->jhandles);
-    free(jq->handles->handles);
-    jq->handles->handles = 0;
-    jq->handles->nhandles = 0;
-    jq->handles->jhandles = jv_array();
-  }
-
   if (jv_get_kind(jq->path) != JV_KIND_INVALID)
     jv_free(jq->path);
+
   jq->path = jv_null();
   jv_free(jq->value_at_path);
   jq->value_at_path = jv_null();
   jq->subexp_nest = 0;
+  jv_free(jq->start_input);
+  jq->start_input = jv_invalid();
 }
 
 void jq_report_error(jq_state *jq, jv value) {
@@ -402,7 +391,6 @@ static void set_error(jq_state *jq, jv value) {
 
 #define ON_BACKTRACK(op) ((op)+NUM_OPCODES)
 
-static jq_state *coinit(jq_state *, uint16_t*);
 static void co_err_cb(void *, jv);
 
 jv jq_next(jq_state *jq) {
@@ -426,11 +414,6 @@ jv jq_next(jq_state *jq) {
 
   uint16_t* pc = stack_restore(jq);
   assert(pc);
-
-  if (jq->initial_execution) {
-    jq->initial_execution = 0;
-    jq_reset_bt(jq, 0);
-  } 
 
   assert(jq->parent == 0 || jq->restore_limit >= jq->stk.limit);
   while (1) {
@@ -1273,7 +1256,7 @@ jv jq_next(jq_state *jq) {
       break;
     }
 
-    case COCREATE: {
+    case COEXPR: {
       /* Create a child co-routine with the following code
        * The child side will start happily at the next instruction
        *
@@ -1290,190 +1273,49 @@ jv jq_next(jq_state *jq) {
       jv input = stack_pop(jq);
 
       uint16_t body_len = *pc++;
-
-      assert(*pc == START && "COCREATE must be followed by START");
-      jq_state *child = coinit(jq, pc);
-      jq_start(child, input, jq->debug_flags);
+      assert(*pc == START && "COEXPR must be followed by START");
+      jv handle = jq_io_coexpr_handle_create(jq, pc);
 
       // jump over the cobody
       pc += body_len;
 
-      // and return its handle
-      extern struct jq_io_table jq__covt;
-      jv handle = jq_handle_new(jq, "coroutine", &jq__covt, child);
       stack_push(jq, handle);
 
       break;
     }
-    case START:
+
     case ON_BACKTRACK(START): {
 
-      if(jq->bt.desc == BT_DESC_ERROR) {
-        // we are raising and backtracked up to here
-        // this is an unhandled user error, halt and return it
-        jv error = jv_invalid_with_msg(jv_copy(jq->bt.payload));
-        jq_reset_bt(jq, 0);
+      if(jq->bt.desc == BT_DESC_NEXT_VALUE && jv_is_valid(jq->start_input)) {
+        // Let's START!
+        stack_save(jq, BT_DESC_ALWAYS,  pc - 1, stack_get_pos(jq));
+        stack_push(jq, jq->start_input);
+        jq->start_input = jv_invalid();
+      }
+      else {
+        // We're done 
         jq->finished = 1;
-        return error;
-      } else if (bt_desc_prio(jq->bt.desc) > BT_DESC_ERROR) {
-        return jv_invalid_with_msg(jv_string_fmt("jq VM unwinded with priority %d", bt_desc_prio(jq->bt.desc)));
-      }
 
-      jv start_input = jq->start_input;
-      jq->start_input = jv_invalid();
-
-      if (!jv_is_valid(start_input)) {
-        if (jv_invalid_has_msg(jv_copy(start_input))) {
-          // in case start input is an invalid with message
-          // then return this invalid and halt
-          jq->finished = 1;
-          return start_input;
-        }
-        switch (jq->input_mode) {
-          case JQ_INPUT_RETURN_EMPTY: {
-            // the usual mode:
-            // save the stack and request more input by returning empty
-            stack_save(jq, BT_DESC_ALWAYS,  pc - 1, stack_get_pos(jq));
-            return start_input /*jv_invalid()*/;
-          }
-          case JQ_INPUT_CALLBACK: {
-            while(!jv_is_valid(start_input) && !jv_invalid_has_msg(jv_copy(start_input))) {
-              if (jq->input_cb == NULL) {
-                return jv_invalid_with_msg(jv_string("Input callback mode requested but input callback hasn't been set"));
-              }
-
-              start_input = jq->input_cb(jq, jq->input_cb_data);
-            }
-
-            if(!jv_is_valid(start_input) && jv_invalid_has_msg(jv_copy(start_input))) {
-              jq->finished = 1;
-              return start_input;
-            }
-          }
+        if(jq->bt.desc == BT_DESC_ERROR) {
+          // we are raising and backtracked up to here
+          // this is an unhandled user error, halt and return it
+          jv error = jv_invalid_with_msg(jv_copy(jq->bt.payload));
+          return error;
+        } 
+        else {
+          return jv_invalid_with_msg(
+            jv_string_fmt(
+              "jq VM unhandled backtrack with priority %d, tag %d", 
+              bt_desc_prio(jq->bt.desc),
+              bt_desc_tag(jq->bt.desc)
+            )
+          );
         }
       }
+      break;
+    }
       
-      // geting here means that start_input is a valid value
-      stack_save(jq, BT_DESC_ALWAYS,  pc - 1, stack_get_pos(jq));
-      stack_push(jq, start_input);
-
-      break;
-    }
-
-    case COEVAL: {
-      /*
-       * Eval.  Setup a new jq_state to run the given program.  Treat it like a co-routine.
-       */
-      jv program = stack_pop(jq);
-      jv options;
-      jv input;
-      jv args;
-      if (jv_get_kind(program) == JV_KIND_ARRAY) {
-        input = jv_array_get(jv_copy(program), 1);
-        args = jv_array_get(jv_copy(program), 2);
-        options = jv_array_get(jv_copy(program), 3);
-        program = jv_array_get(program, 0);
-      } else {
-        options = jv_invalid();
-        args = JV_OBJECT(jv_string("positional"), jv_array());
-      }
-      if (jv_get_kind(args) != JV_KIND_OBJECT && jv_get_kind(args) != JV_KIND_NULL) {
-        set_error(jq, jv_string("Eval program arguments must be an object or null"));
-        jv_free(program);
-        jv_free(options);
-        jv_free(input);
-        jv_free(args);
-        goto do_backtrack;
-      }
-      if (jv_get_kind(args) == JV_KIND_NULL) {
-        jv_free(args);
-        args = JV_OBJECT(jv_string("positional"), jv_array());
-      }
-      if (jv_get_kind(options) != JV_KIND_OBJECT && jv_get_kind(options) != JV_KIND_NULL) {
-        set_error(jq, jv_string("Eval program options must be an object"));
-        jv_free(program);
-        jv_free(options);
-        jv_free(input);
-        jv_free(args);
-        goto do_backtrack;
-      }
-      if (jv_get_kind(options) == JV_KIND_OBJECT &&
-          jv_object_has(jv_copy(options), jv_string("ALLOW_IO"))) {
-        jv allow_io = jv_object_get(jv_copy(jq->attrs), jv_string("ALLOW_IO"));
-        if (jv_get_kind(allow_io) == JV_KIND_TRUE) {
-          /* Parent allows I/O; child may allow I/O */
-          jv_free(allow_io);
-          options = jv_object_set(jv_copy(jq->attrs), jv_string("ALLOW_IO"),
-                                  jv_object_get(options, jv_string("ALLOW_IO")));
-        } else {
-          /* No I/O for child because no I/O for parent */
-          jv_free(allow_io);
-          jv_free(options);
-          options = jv_copy(jq->attrs);
-        }
-      } else {
-        /* Child will not allow I/O regardless of whether the parent does */
-        jv_free(options);
-        options = jv_object_set(jv_copy(jq->attrs), jv_string("ALLOW_IO"),
-                                jv_false());
-      }
-      if (jv_get_kind(program) != JV_KIND_STRING) {
-        set_error(jq, jv_string("Eval program must be a string"));
-        jv_free(program);
-        jv_free(options);
-        jv_free(input);
-        jv_free(args);
-        goto do_backtrack;
-      }
-
-      jq_state *child = jq_init();
-      if (jv_is_valid(options))
-        jq_set_attrs(jq, jv_copy(options));
-
-      child->input_mode = JQ_INPUT_RETURN_EMPTY;
-
-      /* Give the child a way to report errors */
-      jv *p = jv_mem_calloc(1, sizeof(jv));
-      *p = jv_null();
-      jq_set_error_cb(child, co_err_cb, p);
-      if (!jq_compile_args(child, jv_string_value(program), jv_copy(args))) {
-        set_error(jq, jv_string_fmt("Eval program failed to compile: %s", jv_string_value(*p)));
-        jq_teardown(&child);
-        jv_free(program);
-        jv_free(options);
-        jv_free(input);
-        jv_free(args);
-        jv_free(*p);
-        free(p);
-        goto do_backtrack;
-      }
-      /* Now let the child send errors to stderr again? */
-      jq_set_error_cb(child, NULL, NULL);
-      jq_start(child, jv_copy(input), jq->debug_flags);
-      copy_callbacks(jq, child);
-      jv_free(program);
-      jv_free(options);
-      jv_free(input);
-      jv_free(args);
-      jv_free(*p);
-      free(p);
-
-      extern struct jq_io_table jq__covt;
-      stack_push(jq, jq_handle_new(jq, "coroutine", &jq__covt, child));
-      stack_save(jq, BT_DESC_NEXT_VALUE,  pc - 1, stack_get_pos(jq));
-      break;
-    }
-    case ON_BACKTRACK(COEVAL): {
-      jv cohandle = stack_pop(jq);
-      jq_handle_close(jq, cohandle);
-      goto do_backtrack;
-    }
-
-    case TAIL_IO: {
-      // optimized version of IO;BACKTRACK
-      // in this case we really don't want to generate 
-      // a dummy forkpoint and will simply backtrack to the
-      // previous forkpoint upon return from an IO
+    case OUT: {
       jv value = stack_pop(jq);
       return value;
     }
@@ -1483,9 +1325,36 @@ jv jq_next(jq_state *jq) {
       stack_save(jq, BT_DESC_NEXT_VALUE,  pc - 1, stack_get_pos(jq));
       return value;
     }
+
     case ON_BACKTRACK(IO): {
-      // we returned from an IO, just move on
+      jv input = jv_invalid();
+      if (jq->input_cb != NULL) {
+        // call the input callback 
+        input = jq->input_cb(jq, jq->input_cb_data);
+      }
+
+      if (!jv_is_valid(input)) {
+        // we are still invalid, should decide what to do
+        int has_msg = jv_invalid_has_msg(jv_copy(input));
+        if (has_msg) {
+          set_error(jq, jv_invalid_get_msg(input));
+        }
+        else {
+          jq_reset_bt(jq, BT_DESC_NEXT_VALUE);
+        }
+
+        goto do_backtrack;
+      }
+      stack_push(jq, input);
       break;
+    }
+
+    case COEVAL: {
+      /*
+       * Eval.  Setup a new jq_state to run the given program.  Treat it like a co-routine.
+       */
+      jv program = stack_pop(jq);
+      assert(0 && "not implemented");
     }
 
     case RET_JQ: {
@@ -1551,6 +1420,8 @@ static void default_err_cb(void *data, jv msg) {
   jv_free(msg);
 }
 
+static struct jq_plugin_vtable vtable;
+
 jq_state *jq_init(void) {
   jq_state *jq;
   jq = jv_mem_alloc_unguarded(sizeof(*jq));
@@ -1585,110 +1456,22 @@ jq_state *jq_init(void) {
   jq->input_cb_data = 0;
 
   jq->start_input = jv_invalid();
-  jq->input_mode = JQ_INPUT_DEFAULT;
 
-  jq->vmid = jv_number_random_int();
-  jq->rnd = jv_number_random_int();
   jq->attrs = jv_object();
   jq->path = jv_null();
   jq->value_at_path = jv_null();
 
   jq->nomem_handler = NULL;
   jq->nomem_handler_data = NULL;
-  jq->handles = &jq->handles_s;
-  jq->handles->jhandles = jv_array();
-  jq->handles->nhandles = 0;
-  jq->handles->handles = 0;
+  jq->io_schemes = jq_io_init_schemes();
 
   jq->io_policy = NULL;
   jq->io_policy_data = jv_null();
 
+  jq->debug_flags = 0;
+
   return jq;
 }
-
-static void co_err_cb(void *d, jv msg) {
-  jv prev = *(jv *)d;
-
-  if (jv_get_kind(prev) == JV_KIND_NULL) {
-    *(jv *)d = msg;
-  } else if (jv_get_kind(prev) == JV_KIND_STRING) {
-    *(jv *)d = jv_string_fmt("%s; %s", jv_string_value(prev), jv_string_value(msg));
-    jv_free(prev);
-    jv_free(msg);
-  } else {
-    jv_free(prev);
-    *(jv *)d = msg;
-  }
-}
-
-static jv coinput_cb(jq_state *child, void *vjv) {
-  jv *jvp = vjv;
-  jv ret;
-
-  if (jv_is_valid(*jvp) || jv_invalid_has_msg(jv_copy(*jvp))) {
-    ret = *jvp;
-    *jvp = jv_invalid();
-    return ret;
-  }
-
-  return jv_invalid();
-}
-
-/* Not intended to be called by apps */
-static jq_state *coinit(jq_state *parent, uint16_t* start_pc) {
-  jq_state *child;
-  child = jv_mem_calloc(1, sizeof(*child));
-
-  /* First, copy all fields */
-  *child = *parent;
-
-  /* Copy the stack (see notes in exec_stack.h) */
-  stack_copy(&child->stk, &parent->stk);
-
-  /* Linkt the parent */
-  child->parent = parent;
-
-  /* Stop the child freeing things that belong to the parent */
-  child->restore_limit = child->stk.limit;
-  child->start_pc = start_pc;
-
-  child->halted = 0;
-  child->libs = 0;
-  child->initial_execution = 1;
-
-  /* Give the client a VM ID */
-  child->rnd = jv_number_random_int();
-  child->vmid = jv_invalid();
-  do {
-    jv_free(child->vmid);
-    child->vmid = jv_number_random_int();
-  } while (jv_is_valid(child->vmid) && jv_is_valid(parent->vmid) &&
-           jv_equal(jv_copy(parent->vmid), jv_copy(child->vmid)));  /* paranoia */
-
-  /* Copy or null out various jv values not kept on the stack */
-  child->value_at_path = jv_copy(parent->value_at_path);
-  child->error_message = jv_invalid();
-  child->exit_code = jv_invalid();
-  child->error = jv_null();
-  child->attrs = jv_copy(parent->attrs);
-  child->path = jv_copy(parent->path);
-  child->io_policy_data = jv_copy(parent->io_policy_data);
-  child->start_input = jv_invalid();
-
-  /* Share I/O handles with the parent */
-  child->handles = parent->handles;
-
-  /*
-   * Give the child a way to get inputs from writes to the I/O handle for the
-   * client.
-   */
-  jq_set_input_cb(child, coinput_cb, &child->start_input);
-  child->input_mode = JQ_INPUT_RETURN_EMPTY;
-
-  return child;
-}
-
-jv jq_get_vmid(jq_state *jq) { return jv_copy(jq->vmid); }
 
 void jq_set_error_cb(jq_state *jq, jq_msg_cb cb, void *data) {
   if (cb == NULL) {
@@ -1711,12 +1494,16 @@ void jq_set_nomem_handler(jq_state *jq, void (*nomem_handler)(void *), void *dat
   jq->nomem_handler_data = data;
 }
 
+void jq_set_debug_flags(jq_state *jq, int flags) {
+  jq->debug_flags = flags;
+}
 
-void jq_start(jq_state *jq, jv input, int flags) {
+void jq_start(jq_state *jq, jv input) {
   jv_nomem_handler(jq->nomem_handler, jq->nomem_handler_data);
 
+  jq_reset(jq);
+
   if (!jq->parent) {
-    jq_reset(jq);
     struct closure top = {jq->bc, -1};
     struct frame* top_frame = frame_push(jq, top, 0, 0);
     top_frame->retdata = 0;
@@ -1726,8 +1513,6 @@ void jq_start(jq_state *jq, jv input, int flags) {
   jq->start_input = input;
   stack_save(jq, BT_DESC_NEXT_VALUE,  jq->parent ? jq->start_pc : jq->bc->code, stack_get_pos(jq));
 
-  jq->debug_flags = flags;
-  jq->initial_execution = 1;
   jq->halted = 0;
   jq->finished = 0;
 }
@@ -1742,19 +1527,15 @@ void jq_teardown(jq_state **jqp) {
   if (jq->parent)
     stack_reset(&jq->stk, jq->restore_limit);
 
-  if (jq->handles == &jq->handles_s)
-    jv_free(jq->handles->jhandles);
-
   if (!jq->parent) {
     bytecode_free(jq->bc);
     libraries_free(jq->libs);
     if (jq->io_policy)
       jq_teardown(&jq->io_policy);
   }
-  jv_free(jq->rnd);
-  jv_free(jq->vmid);
   jv_free(jq->attrs);
   jv_free(jq->io_policy_data);
+  jv_free(jq->io_schemes);
 
   jv_mem_free(jq);
 }
@@ -1953,7 +1734,7 @@ jv jq_set_io_policy(jq_state *jq, jv policy) {
   }
 
   /* Check if the program produces policy data, or evaluates policy */
-  jq_start(io_policy, jv_null(), 0);
+  jq_start(io_policy, jv_null());
   copy_callbacks(jq, io_policy);
   jv v = jq_next(io_policy);
   jv ret;
@@ -2069,23 +1850,6 @@ jv jq_get_error_message(jq_state *jq)
   return jv_copy(jq->error_message);
 }
 
-void jq_set_input_mode(jq_state* jq, jq_input_mode mode) {
-  jq->input_mode = mode;
-}
-
-jq_input_mode jq_get_input_mode(jq_state* jq) {
-  return jq->input_mode;
-}
-
-void jq_set_input(jq_state* jq, jv start_input) {
-  jv_free(jq->start_input);
-  jq->start_input = start_input;
-}
-
-jv jq_get_input_copy(jq_state* jq) {
-  return jv_copy(jq->start_input);
-}
-
 jv jq_io_policy_check(jq_state *jq, jv req) {
   if (!jq->io_policy) {
     jv_free(req);
@@ -2093,7 +1857,7 @@ jv jq_io_policy_check(jq_state *jq, jv req) {
   }
   jq_start(jq->io_policy,
            JV_OBJECT(jv_string("io_policy"), jv_copy(jq->io_policy_data),
-                     jv_string("io_request"), req), 0);
+                     jv_string("io_request"), req));
   copy_callbacks(jq, jq->io_policy);
   jv res = jq_next(jq->io_policy);
   switch (jv_get_kind(res)) {
@@ -2241,13 +2005,9 @@ static void init_vtable(struct jq_plugin_vtable *vtable) {
   vtable->jv_object = jv_object;
   vtable->jv_keys = jv_keys;
   vtable->jq_set_attrs = jq_set_attrs;
-  vtable->jq_handle_get_kind = jq_handle_get_kind;
-  vtable->jq_handle_get = jq_handle_get;
-  vtable->jq_handle_new = jq_handle_new;
-  vtable->jq_handle_reset = jq_handle_reset;
-  vtable->jq_handle_close = jq_handle_close;
-  vtable->jq_handle_write = jq_handle_write;
-  vtable->jq_handle_read = jq_handle_read;
-  vtable->jq_handle_stat = jq_handle_stat;
-  vtable->jq_handle_eof = jq_handle_eof;
+  vtable->jq_io_handle_reset = jq_io_handle_reset;
+  vtable->jq_io_handle_close = jq_io_handle_close;
+  vtable->jq_io_handle_io = jq_io_handle_io;
+  vtable->jq_io_handle_stat = jq_io_handle_stat;
+  vtable->jq_io_handle_register_scheme = jq_io_handle_register_scheme;
 }

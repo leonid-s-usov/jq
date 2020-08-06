@@ -13,6 +13,8 @@ LIBJQ_SRC = src/builtin.c src/bytecode.c src/compile.c src/execute.c    \
         src/jv_unicode.c src/linker.c src/locfile.c src/util.c          \
         src/decNumber/decContext.c src/decNumber/decNumber.c            \
         src/jv_dtoa_tsd.c src/builtin_modules.c                         \
+        src/jq_io_builtin.c src/jq_io_co.c                              \
+        src/jq_io_handle.c                                              \
         ${LIBJQ_INCS}
 
 ### C build options

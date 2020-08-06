@@ -7,10 +7,10 @@ OP(TOP, MARKER, 0, 0)
 // Instructions for input, output and coroutine creation
 OP(START, NONE, 0, 1)
 OP(IO, NONE, 1, 0)
-OP(TAIL_IO, BT(NONE), 1, 0)
+OP(OUT, BT(NONE), 1, 0)
 
-OP(COEVAL, NONE, 1, 1)
-OP(COCREATE, BRANCH, 1, 1)
+OP(COEVAL, NONE, 2, 1)
+OP(COEXPR, BRANCH, 1, 1)
 
 // Backtracking instructions
 OP(BACKTRACK_PC, BT(VARIABLE), 0, 0)

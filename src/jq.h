@@ -11,32 +11,6 @@ enum {
   JQ_DEBUG_TRACE_ALL = JQ_DEBUG_TRACE | JQ_DEBUG_TRACE_DETAIL | JQ_DEBUG_REFCNT,
 };
 
-typedef enum jq_input_mode_enum {
-  // JQ VM reaches a state where it requires the next input
-  // when it backtracks to START.
-  // At this point the VM can behave differently, and this enum
-  // describes the possible actions VM will take.
-
-
-  // In the RETURN_EMPTY mode jq_next behaves like it always did:
-  // it will return a jv_invalid() without any message
-  // to show that additional input is needed
-  // The caller in this case may choose to restart the VM
-  // or set the next value and call jq_next again
-  JQ_INPUT_RETURN_EMPTY,
-
-  // In the CALLBACK mode jq_next will issue an input callback
-  // in case it will require more input. This will be equivalent
-  // to when the jq program reaches the `input` instruction.
-  // passing an invalid to the callback will immediately request input again
-  // passing an invalid with message will raise this as an error and halt
-  JQ_INPUT_CALLBACK,
-
-  // A backward compatible default mode
-  JQ_INPUT_DEFAULT = JQ_INPUT_RETURN_EMPTY
-} jq_input_mode;
-
-
 typedef struct jq_state jq_state;
 typedef void (*jq_msg_cb)(void *, jv);
 
@@ -49,14 +23,10 @@ void jq_report_error(jq_state *, jv);
 int jq_compile(jq_state *, const char*);
 int jq_compile_args(jq_state *, const char*, jv);
 void jq_dump_disassembly(jq_state *, int);
-void jq_start(jq_state *, jv value, int);
+void jq_start(jq_state *, jv value);
+void jq_set_debug_flags(jq_state *, int);
 jv jq_next(jq_state *);
 void jq_teardown(jq_state **);
-void jq_set_input_mode(jq_state*, jq_input_mode);
-jq_input_mode jq_get_input_mode(jq_state*);
-
-void jq_set_input(jq_state*, jv);
-jv jq_get_input_copy(jq_state*);
 
 void jq_halt(jq_state *, jv, jv);
 int jq_halted(jq_state *);
@@ -70,8 +40,6 @@ void jq_get_input_cb(jq_state *, jq_input_cb *, void **);
 
 void jq_set_debug_cb(jq_state *, jq_msg_cb, void *);
 void jq_get_debug_cb(jq_state *, jq_msg_cb *, void **);
-
-jv jq_get_vmid(jq_state *);
 
 jv jq_io_policy_check(jq_state *, jv);
 
