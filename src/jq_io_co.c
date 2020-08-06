@@ -22,7 +22,7 @@ static jv close(jq_state *jq, jv cdata, jv input) {
 static jv reset(jq_state *jq, jv cdata, jv input) {
   context* ctx = jv_cstruct_copy_get_ptr(cdata);
   if (ctx->child) {
-    jq_start(ctx->child, jv_copy(input));
+    jq_start(ctx->child, jv_copy(input), ctx->child->debug_flags);
   } else {
     jv_free(input);
     input = MAKE_ERROR_CLOSED();
@@ -92,14 +92,14 @@ static jv make_context(jq_state* child) {
   ctx->child = child;
   ctx->input = jv_invalid();
 
-  jq_set_input_cb(child, coinput_cb, ctx);
+  jq_set_input_cb(child, (jq_input_cb)coinput_cb, ctx);
 
-  return jv_cstruct(ctx, free_context);
+  return jv_cstruct(ctx, (jv_cstruct_free_f)free_context);
 }
 
 
-jv jq_io_coexpr_handle_create(jq_state *parent, uint16_t* start_pc){
-    jq_state *child;
+jv jq_io_coexpr_handle_create(jq_state *parent, uint16_t* start_pc, jv input){
+  jq_state *child;
   child = jv_mem_calloc(1, sizeof(*child));
 
   /* First, copy all fields */
@@ -134,11 +134,11 @@ jv jq_io_coexpr_handle_create(jq_state *parent, uint16_t* start_pc){
   child->input_cb = NULL;
   child->input_cb_data = NULL;
 
-  child->debug_flags = parent->debug_flags;
+  jq_start(child, input, parent->debug_flags);
 
   jv jctx = make_context(child);
 
-  return jq_io_handle_make(parent, jv_string_fmt("builtin:coexpr:%x", child), jctx);
+  return jq_io_handle_make(parent, jv_string_fmt("builtin:coexpr:%p", child), jctx);
 }
 
 
@@ -228,7 +228,7 @@ jv jq_io_coeval_handle_create(jq_state* parent, jv input, jv program) {
   jv_free(options);
 
   jv errors = jv_string("");
-  jq_set_error_cb(child, co_err_cb, &errors);
+  jq_set_error_cb(child, (jq_msg_cb)co_err_cb, &errors);
 
   if (!jq_compile_args(child, jv_string_value(program), jv_copy(args))) {
     jv error = jv_string_fmt("Eval program failed to compile: %s", jv_string_value(errors));
@@ -245,17 +245,13 @@ jv jq_io_coeval_handle_create(jq_state* parent, jv input, jv program) {
   jq_set_error_cb(child, parent->err_cb, parent->err_cb_data);
   jq_set_debug_cb(child, parent->debug_cb, parent->debug_cb_data);
 
-  jq_set_debug_flags(child, parent->debug_flags);
-
   jv_free(program);
   jv_free(args);
   jv_free(errors);
 
-
-
-  jq_start(child, input);
+  jq_start(child, input, parent->debug_flags);
 
   jv jctx = make_context(child);
 
-  return jq_io_handle_make(parent, jv_string_fmt("builtin:coeval:%x", child), jctx);
+  return jq_io_handle_make(parent, jv_string_fmt("builtin:coeval:%p", child), jctx);
 }

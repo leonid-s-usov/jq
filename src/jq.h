@@ -23,8 +23,7 @@ void jq_report_error(jq_state *, jv);
 int jq_compile(jq_state *, const char*);
 int jq_compile_args(jq_state *, const char*, jv);
 void jq_dump_disassembly(jq_state *, int);
-void jq_start(jq_state *, jv value);
-void jq_set_debug_flags(jq_state *, int);
+void jq_start(jq_state *, jv value, int flags);
 jv jq_next(jq_state *);
 void jq_teardown(jq_state **);
 

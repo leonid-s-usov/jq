@@ -555,7 +555,11 @@ Exp ">=" Exp {
 
 Term {
   $$ = $1;
-}
+} |
+
+'$' '(' Exp ')' {
+  $$ = gen_coexpression($3);
+} 
 
 Import:
 ImportWhat ';' {
@@ -640,10 +644,10 @@ Param:
   $$ = gen_param_regular(jv_string_value($2));
   jv_free($2);
 } |
-"@@" IDENT {
-  $$ = gen_param_coexpr(jv_string_value($2));
-  jv_free($2);
-} |
+// "@@" IDENT {
+//   $$ = gen_param_coexpr(jv_string_value($2));
+//   jv_free($2);
+// } |
 IDENT {
   $$ = gen_param(jv_string_value($1));
   jv_free($1);

@@ -361,13 +361,15 @@ static void jv_dump_term(struct dtoa_context* C, jv x, int flags, int indent, FI
     }
     if (color) put_str(color, F, S, flags & JV_PRINT_ISATTY);
     put_char('}', F, S, flags & JV_PRINT_ISATTY);
+    break;
   }
   case JV_KIND_CSTRUCT: {
     if (flags & JV_PRINT_REFCOUNT)
       put_refcnt(C, refcnt, F, S, flags & JV_PRINT_ISATTY);
     char buf[32];
+    snprintf(buf, sizeof(buf)-1, "\"<cstruct@%p>\"", jv_cstruct_copy_get_ptr(x));
     put_str(
-      snprintf(buf, sizeof(buf), "\"<cstruct@%016xll>\"", jv_cstruct_copy_get_ptr(x)), 
+      buf, 
       F, S, flags & JV_PRINT_ISATTY
     );
     break;

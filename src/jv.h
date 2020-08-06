@@ -32,7 +32,7 @@ typedef struct {
   } u;
 } jv;
 
-typedef void (*cstruct_free_f)(void *cstruct);
+typedef void (*jv_cstruct_free_f)(void *cstruct);
 
 
 
@@ -53,7 +53,7 @@ typedef void (*cstruct_free_f)(void *cstruct);
  * - jv_string_value
  */
 
-jv jv_cstruct(void* cstruct, cstruct_free_f free);
+jv jv_cstruct(void* cstruct, jv_cstruct_free_f free);
 void * jv_cstruct_copy_get_ptr(jv j);
 
 jv_kind jv_get_kind(jv);

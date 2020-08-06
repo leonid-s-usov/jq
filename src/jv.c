@@ -28,7 +28,7 @@ typedef struct jv_refcnt {
 
 typedef struct jvp_cstruct_header {
   struct jv_refcnt refcnt;
-  cstruct_free_f free;
+  jv_cstruct_free_f free;
   void *cstruct;
 } jvp_cstruct_header;
 
@@ -119,7 +119,7 @@ jv jv_bool(int x) {
   return x ? JV_TRUE : JV_FALSE;
 }
 
-jv jv_cstruct(void* cstruct, cstruct_free_f free){
+jv jv_cstruct(void* cstruct, jv_cstruct_free_f free){
   jvp_cstruct_header* header = jv_mem_alloc(sizeof(jvp_cstruct_header));
   header->cstruct = cstruct;
   header->refcnt = JV_REFCNT_INIT;

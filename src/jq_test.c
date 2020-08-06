@@ -177,8 +177,7 @@ static void run_jq_tests(jv lib_dirs, int verbose, FILE *testdata, int skip, int
       continue;
     }
 
-    jq_set_debug_flags(jq, verbose ? JQ_DEBUG_TRACE : 0);
-    jq_start(jq, input);
+    jq_start(jq, input, verbose ? JQ_DEBUG_TRACE : 0);
 
     // XXX Use getline(), not fgets()
     while (fgets(buf, sizeof(buf), testdata)) {

@@ -1274,7 +1274,7 @@ jv jq_next(jq_state *jq) {
 
       uint16_t body_len = *pc++;
       assert(*pc == START && "COEXPR must be followed by START");
-      jv handle = jq_io_coexpr_handle_create(jq, pc);
+      jv handle = jq_io_coexpr_handle_create(jq, pc, input);
 
       // jump over the cobody
       pc += body_len;
@@ -1286,14 +1286,22 @@ jv jq_next(jq_state *jq) {
 
     case ON_BACKTRACK(START): {
 
-      if(jq->bt.desc == BT_DESC_NEXT_VALUE && jv_is_valid(jq->start_input)) {
-        // Let's START!
-        stack_save(jq, BT_DESC_ALWAYS,  pc - 1, stack_get_pos(jq));
-        stack_push(jq, jq->start_input);
-        jq->start_input = jv_invalid();
+      if(jq->bt.desc == BT_DESC_NEXT_VALUE ) {
+        if (jv_is_valid(jq->start_input)) {
+          // Let's START!
+          stack_save(jq, BT_DESC_ALWAYS,  pc - 1, stack_get_pos(jq));
+          stack_push(jq, jq->start_input);
+          jq->start_input = jv_invalid();
+        }
+        else {
+          // We're done 
+          jq->finished = 1;
+          return jv_invalid();
+        }
       }
       else {
-        // We're done 
+        // things aren't too good
+
         jq->finished = 1;
 
         if(jq->bt.desc == BT_DESC_ERROR) {
@@ -1494,11 +1502,7 @@ void jq_set_nomem_handler(jq_state *jq, void (*nomem_handler)(void *), void *dat
   jq->nomem_handler_data = data;
 }
 
-void jq_set_debug_flags(jq_state *jq, int flags) {
-  jq->debug_flags = flags;
-}
-
-void jq_start(jq_state *jq, jv input) {
+void jq_start(jq_state *jq, jv input, int flags) {
   jv_nomem_handler(jq->nomem_handler, jq->nomem_handler_data);
 
   jq_reset(jq);
@@ -1509,6 +1513,8 @@ void jq_start(jq_state *jq, jv input) {
     top_frame->retdata = 0;
     top_frame->retaddr = 0;
   }
+
+  jq->debug_flags = flags;
 
   jq->start_input = input;
   stack_save(jq, BT_DESC_NEXT_VALUE,  jq->parent ? jq->start_pc : jq->bc->code, stack_get_pos(jq));
@@ -1734,7 +1740,7 @@ jv jq_set_io_policy(jq_state *jq, jv policy) {
   }
 
   /* Check if the program produces policy data, or evaluates policy */
-  jq_start(io_policy, jv_null());
+  jq_start(io_policy, jv_null(), jq->debug_flags);
   copy_callbacks(jq, io_policy);
   jv v = jq_next(io_policy);
   jv ret;
@@ -1857,7 +1863,7 @@ jv jq_io_policy_check(jq_state *jq, jv req) {
   }
   jq_start(jq->io_policy,
            JV_OBJECT(jv_string("io_policy"), jv_copy(jq->io_policy_data),
-                     jv_string("io_request"), req));
+                     jv_string("io_request"), req), jq->debug_flags);
   copy_callbacks(jq, jq->io_policy);
   jv res = jq_next(jq->io_policy);
   switch (jv_get_kind(res)) {

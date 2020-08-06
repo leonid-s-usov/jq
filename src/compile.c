@@ -1159,8 +1159,16 @@ block gen_coexpression_with_param_name(const char* param) {
   return BLOCK(cocreate, cobody);
 }
 
-block gen_coexpression(block body) {
-  gen_function("@cobody", gen_noop(), body);
+block gen_coexpression(block cobody) {
+  if (!block_is_single(cobody) || cobody.first->op != CALL_JQ || cobody.first->nactuals > 0) {
+    block func = gen_function("@cobody", gen_noop(), cobody);
+    cobody = block_bind_referenced(func, gen_call("@cobody", gen_noop()), 0);
+  }
+  block program = BLOCK(gen_op_simple(START),
+                        cobody,
+                        gen_op_simple(OUT));
+  block coexpr = gen_op_target(COEXPR, program);
+  return BLOCK(coexpr, program);
 }
 
 block gen_coeval(block program) {
