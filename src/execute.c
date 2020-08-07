@@ -1260,10 +1260,6 @@ jv jq_next(jq_state *jq) {
       break;
     }
 
-    case CALL_HANDLE: {
-
-    }
-
     case COEXPR: {
       /* Create a child co-routine with the following code
        * The child side will start happily at the next instruction
