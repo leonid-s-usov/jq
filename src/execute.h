@@ -5,7 +5,7 @@
 #include <stdint.h>
 
 #include "jv.h"
-#include "jq_io_builtin.h"
+#include "jq_plugin.h"
 
 #include "exec_stack.h"
 #include "bytecode.h"

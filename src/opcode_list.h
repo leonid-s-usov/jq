@@ -6,8 +6,8 @@ OP(TOP, MARKER, 0, 0)
 
 // Instructions for input, output and coroutine creation
 OP(START, NONE, 0, 1)
-OP(IO, NONE, 1, 0)
-OP(OUT, BT(NONE), 1, 0)
+OP(INPUT, NONE, 1, 1)
+OP(OUTPUT, BT(NONE), 1, 0)
 
 OP(COEVAL, NONE, 2, 1)
 OP(COEXPR, BRANCH, 1, 1)
@@ -48,6 +48,8 @@ OP(JUMP_F,BRANCH,   1, 0)
 OP(APPEND, VARIABLE,1, 0)
 OP(INSERT, NONE,    4, 2)
 OP(RANGE, VARIABLE, 1, 1)
+
+OP(CALL_HANDLE, NONE, 2, 1)
 
 OP(SUBEXP_BEGIN,  NONE,     1, 2)
 OP(SUBEXP_END,    NONE,     2, 2)

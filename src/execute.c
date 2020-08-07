@@ -26,6 +26,10 @@
 #include "util.h"
 #include "linker.h"
 
+#include "jq_io.h"
+#include "jq_io_builtin.h"
+#include "jq_io_co.h"
+
 
 static inline enum bt_priority bt_desc_prio(uint32_t desc_val) {
   union bt_descriptor desc = {.value=desc_val};
@@ -1256,6 +1260,10 @@ jv jq_next(jq_state *jq) {
       break;
     }
 
+    case CALL_HANDLE: {
+
+    }
+
     case COEXPR: {
       /* Create a child co-routine with the following code
        * The child side will start happily at the next instruction
@@ -1323,18 +1331,13 @@ jv jq_next(jq_state *jq) {
       break;
     }
       
-    case OUT: {
+    case OUTPUT: {
       jv value = stack_pop(jq);
       return value;
     }
 
-    case IO: {
-      jv value = stack_pop(jq);
-      stack_save(jq, BT_DESC_NEXT_VALUE,  pc - 1, stack_get_pos(jq));
-      return value;
-    }
-
-    case ON_BACKTRACK(IO): {
+    case INPUT: {
+      jv_free(stack_pop(jq));
       jv input = jv_invalid();
       if (jq->input_cb != NULL) {
         // call the input callback 
@@ -1455,7 +1458,10 @@ jq_state *jq_init(void) {
   jq->finished = 0;
   jq->exit_code = jv_invalid();
   jq->error_message = jv_invalid();
-  jq_reset_bt(jq, 0);
+
+  jq->bt.desc = 0;
+  jq->bt.ttl = 0;
+  jq->bt.payload = jv_invalid();
 
   jq->err_cb = default_err_cb;
   jq->err_cb_data = stderr;
@@ -2011,9 +2017,8 @@ static void init_vtable(struct jq_plugin_vtable *vtable) {
   vtable->jv_object = jv_object;
   vtable->jv_keys = jv_keys;
   vtable->jq_set_attrs = jq_set_attrs;
-  vtable->jq_io_handle_reset = jq_io_handle_reset;
-  vtable->jq_io_handle_close = jq_io_handle_close;
-  vtable->jq_io_handle_io = jq_io_handle_io;
-  vtable->jq_io_handle_stat = jq_io_handle_stat;
-  vtable->jq_io_handle_register_scheme = jq_io_handle_register_scheme;
+  vtable->jq_io_handle_call = jq_io_handle_call;
+  vtable->jq_io_open_handle = jq_io_open_handle;
+  vtable->jq_io_handle_validate = jq_io_handle_validate;
+  vtable->jq_io_register_scheme = jq_io_register_scheme;
 }

@@ -1168,19 +1168,6 @@ static jv f_modulemeta(jq_state *jq, jv a) {
   return load_module_meta(jq, a);
 }
 
-static jv f_input(jq_state *jq, jv input) {
-  jv_free(input);
-  jq_input_cb cb;
-  void *data;
-  jq_get_input_cb(jq, &cb, &data);
-  if (cb == NULL)
-    return jv_invalid_with_msg(jv_string("break"));
-  jv v = cb(jq, data);
-  if (jv_is_valid(v) || jv_invalid_has_msg(jv_copy(v)))
-    return v;
-  return jv_invalid_with_msg(jv_string("break"));
-}
-
 static jv f_debug(jq_state *jq, jv input) {
   jq_msg_cb cb;
   void *data;
@@ -1718,7 +1705,6 @@ static const struct cfunction function_list[] = {
   {(cfunction_ptr)f_get_jq_origin, "get_jq_origin", 1, 0, 1},
   {(cfunction_ptr)f_match, "_match_impl", 4, 1, 1},
   {(cfunction_ptr)f_modulemeta, "modulemeta", 1, 0, 1},
-  {(cfunction_ptr)f_input, "input", 1, 0, 1},
   {(cfunction_ptr)f_debug, "debug", 1, 0, 1},
   {(cfunction_ptr)f_stderr, "stderr", 1, 0, 1},
   {(cfunction_ptr)f_strptime, "strptime", 2, 1, 1},
@@ -1733,6 +1719,7 @@ static const struct cfunction function_list[] = {
   {(cfunction_ptr)f_random_string, "randomstring", 1, 0, 1},
   {(cfunction_ptr)f_current_filename, "input_filename", 1, 0, 1},
   {(cfunction_ptr)f_current_line, "input_line_number", 1, 0, 1},
+  {(cfunction_ptr)jq_io_handle_call, "@io", 3, 0, 1},
 };
 #undef LIBM_DDDD_NO
 #undef LIBM_DDD_NO
@@ -1786,6 +1773,8 @@ static block public_inlines(void) {
     struct bytecoded_builtin builtin_defs[] = {
       {"empty", gen_op_simple(BACKTRACK_0)},
       {"error", gen_op_simple(RAISE)},
+      {"input", gen_op_simple(INPUT)},
+      {"output", gen_op_simple(OUTPUT)},
       {"not", gen_condbranch(gen_const(jv_false()),
                              gen_const(jv_true()))},
     };

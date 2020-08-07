@@ -68,6 +68,8 @@ block gen_label(const char *label, block exp);
 block gen_coexpression(block body);
 block gen_coeval(block program);
 
+block gen_handle_call(block handle, block method);
+
 block gen_cbinding(const struct cfunction* functions, int nfunctions, block b);
 
 block block_take_block(block *);

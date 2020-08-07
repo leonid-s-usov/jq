@@ -11,6 +11,7 @@
 #include "locfile.h"
 #include "jv_alloc.h"
 #include "linker.h"
+#include "jq_io_private.h"
 
 /*
   The intermediate representation for jq filters is as a sequence of
@@ -1151,28 +1152,39 @@ block gen_foreach(block source, block matcher, block init, block update, block e
   return foreach;
 }
 
-block gen_coexpression_with_param_name(const char* param) {
-  block cobody = BLOCK(gen_op_simple(START),
-                       gen_call(param, gen_noop()),
-                       gen_op_simple(OUT));
-  block cocreate = gen_op_target(COEXPR, cobody);
-  return BLOCK(cocreate, cobody);
-}
-
 block gen_coexpression(block cobody) {
-  if (!block_is_single(cobody) || cobody.first->op != CALL_JQ || cobody.first->nactuals > 0) {
-    block func = gen_function("@cobody", gen_noop(), cobody);
-    cobody = block_bind_referenced(func, gen_call("@cobody", gen_noop()), 0);
-  }
   block program = BLOCK(gen_op_simple(START),
                         cobody,
-                        gen_op_simple(OUT));
+                        gen_op_simple(OUTPUT));
   block coexpr = gen_op_target(COEXPR, program);
   return BLOCK(coexpr, program);
 }
 
 block gen_coeval(block program) {
 
+}
+
+// static const struct cfunction io_handle_call = {
+//   .fptr = (cfunction_ptr)jq_io_handle_call,
+//   .name = "@io",
+//   .nargs = 3,     // input, method, handle
+//   .pure = 0,
+//   .exported = 0
+// };
+
+block gen_handle_call(block method, block handle) {
+  // inst* i = inst_new(CLOSURE_CREATE_C);
+  // i->imm.cfunc = &io_handle_call;
+  // i->symbol = strdup(io_handle_call.name);
+  // i->nformals = io_handle_call.nargs - 1; 
+  // i->any_unbound = 0;
+
+  // block binder = inst_block(i);
+  block load_handle = gen_function("$h", gen_noop(), handle);
+  block load_method = gen_function(".m", gen_noop(), method);
+  
+  // return block_bind(binder, gen_call(i->symbol, BLOCK(load_handle, load_method)), 0);
+  return gen_call("@io", BLOCK(load_method, load_handle));
 }
 
 block gen_protect_with_param_name(const char* param) {

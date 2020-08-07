@@ -123,6 +123,7 @@ struct lexer_param;
 %type <blk> Module Import Imports ImportWhat ImportFrom
 %type <blk> Param Params Arg Args
 %type <blk> Patterns Pattern ArrayPats ObjPats ObjPat
+%type <blk> HandleMethodSpec HandleRefSpec
 %type <literal> Keyword
 %{
 #include "lexer.h"
@@ -320,7 +321,7 @@ Module Imports Exp {
   block main_loop = BLOCK (
     gen_op_simple(START),
     $3, // call_main
-    gen_op_simple(OUT)
+    gen_op_simple(OUTPUT)
   );
 
   *answer = BLOCK($1, $2, gen_marker(TOP), main_loop);
@@ -364,32 +365,32 @@ FuncDef Exp %prec FUNCDEF {
   $$ = block_bind_referenced($1, $2, OP_IS_CALL_PSEUDO);
 } |
 
-"codef" '(' '$' ')' IDENT ':' Exp ';' %prec FUNCDEF Exp {
-  /* coexp(body) */
-  block coexp = gen_call("coexp", gen_lambda($7));
-  /* as $IDENT | */
-  block covar = gen_op_var_fresh(STOREV, jv_string_value($5));
-  /* def IDENT: $IDENT | fhread; */
-  block codef = gen_function(
-    jv_string_value($5), 
-    gen_noop(), 
-    BLOCK(
-      gen_op_unbound(LOADV, jv_string_value($5)), 
-      gen_call("fhread", gen_noop())
-    )
-  );
+// "codef" '(' '$' ')' IDENT ':' Exp ';' %prec FUNCDEF Exp {
+//   /* coexp(body) */
+//   block coexp = gen_call("coexp", gen_lambda($7));
+//   /* as $IDENT | */
+//   block covar = gen_op_var_fresh(STOREV, jv_string_value($5));
+//   /* def IDENT: $IDENT | fhread; */
+//   block codef = gen_function(
+//     jv_string_value($5), 
+//     gen_noop(), 
+//     BLOCK(
+//       gen_op_unbound(LOADV, jv_string_value($5)), 
+//       gen_call("fhread", gen_noop())
+//     )
+//   );
 
-  /* Now bind $9 so it sees the codef */
-  block b = block_bind_referenced(codef, $9, OP_IS_CALL_PSEUDO | OP_HAS_BINDING);
+//   /* Now bind $9 so it sees the codef */
+//   block b = block_bind_referenced(codef, $9, OP_IS_CALL_PSEUDO | OP_HAS_BINDING);
   
-  /* Now bind that so it sees the variable $IDENT */
-  b = block_bind_referenced(covar, b, OP_HAS_VARIABLE);
+//   /* Now bind that so it sees the variable $IDENT */
+//   b = block_bind_referenced(covar, b, OP_HAS_VARIABLE);
 
-  /* Now do the rest of the binding for a $IDENT | Exp */
-  covar = block_take_block(&b);
-  $$ = BLOCK(gen_const(jv_null()), gen_destructure(coexp, covar, b));
-  jv_free($5);
-} |
+//   /* Now do the rest of the binding for a $IDENT | Exp */
+//   covar = block_take_block(&b);
+//   $$ = BLOCK(gen_const(jv_null()), gen_destructure(coexp, covar, b));
+//   jv_free($5);
+// } |
 
 Term "as" Patterns '|' Exp {
   $$ = gen_destructure($1, $3, $5);
@@ -557,8 +558,30 @@ Term {
   $$ = $1;
 } |
 
-'$' '(' Exp ')' {
-  $$ = gen_coexpression($3);
+HandleMethodSpec '@' HandleRefSpec {
+  $$ = gen_location(@$, locations, gen_handle_call($1, $3));
+}
+
+
+HandleMethodSpec:
+%empty {
+  $$ = gen_const(jv_string(""));
+} |
+IDENT {
+  $$ = gen_const($1);
+} |
+'(' Exp ')' {
+  $$ = $2;
+}
+
+
+HandleRefSpec:
+IDENT {
+  $$ = gen_location(@$, locations, gen_op_unbound(LOADV, jv_string_value($1)));
+  jv_free($1);
+} |
+'(' Exp ')' {
+  $$ = $2;
 } 
 
 Import:
@@ -644,10 +667,6 @@ Param:
   $$ = gen_param_regular(jv_string_value($2));
   jv_free($2);
 } |
-// "@@" IDENT {
-//   $$ = gen_param_coexpr(jv_string_value($2));
-//   jv_free($2);
-// } |
 IDENT {
   $$ = gen_param(jv_string_value($1));
   jv_free($1);
@@ -794,9 +813,10 @@ LITERAL {
 String {
   $$ = $1;
 } |
-FORMAT {
-  $$ = gen_format(gen_noop(), $1);
-} |
+// no format filters for now - temp
+// FORMAT {
+//   $$ = gen_format(gen_noop(), $1);
+// } |
 '(' Exp ')' {
   $$ = $2;
 } |
@@ -843,6 +863,11 @@ IDENT '(' Args ')' {
   $$ = gen_location(@1, locations, $$);
   jv_free($1);
 } |
+
+'$' '(' Exp ')' {
+  $$ = gen_coexpression($3);
+} |
+
 '(' error ')' { $$ = gen_noop(); } |
 '[' error ']' { $$ = gen_noop(); } |
 Term '[' error ']' { $$ = $1; } |

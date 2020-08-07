@@ -4,48 +4,58 @@
 #include "execute.h"
 
 typedef struct context {
-  struct jq_io_table iot;
   jq_state *child;
   jv input;
-  jv err;
 } context;
 
 #define MAKE_ERROR_CLOSED() jv_invalid_with_msg(jv_string("Invalid operation on a closed coroutine"))
 
-static jv close(jq_state *jq, jv cdata, jv input) {
-  context* ctx = jv_cstruct_copy_get_ptr(cdata);
+static jv close(jq_state *jq, jv input, jv handle, jv method) {
+  jv_free(method);
+
+  context* ctx = jv_cstruct_copy_get_ptr(handle);
   jq_teardown(&(ctx->child));
-  jv_free(cdata);
+
+  jv_free(handle);
   return input;
 }
 
-static jv reset(jq_state *jq, jv cdata, jv input) {
-  context* ctx = jv_cstruct_copy_get_ptr(cdata);
+static jv reset(jq_state *jq, jv input, jv handle, jv method) {
+  jv_free(method);
+
+  context* ctx = jv_cstruct_copy_get_ptr(handle);
+  
   if (ctx->child) {
     jq_start(ctx->child, jv_copy(input), ctx->child->debug_flags);
   } else {
     jv_free(input);
     input = MAKE_ERROR_CLOSED();
   }
-  jv_free(cdata);
+  
+  jv_free(handle);
   return input;
 }
 
-static jq_io_stat stat(jq_state *jq, jv cdata, jv input) {
-  context* ctx = jv_cstruct_copy_get_ptr(cdata);
-  jq_io_stat result = {.open = 0, .eof = 0};
-  if (ctx->child) {
-    result.open = 1;
-    result.eof = jq_finished(ctx->child);
-  }
-  jv_free(cdata);
+static jv eof(jq_state *jq, jv input, jv handle, jv method) {
+  jv_free(method);
   jv_free(input);
-  return result;
+
+  context* ctx = jv_cstruct_copy_get_ptr(handle);
+
+  if (ctx->child) {
+    input = jv_bool(jq_finished(ctx->child));
+  } else {
+    input = MAKE_ERROR_CLOSED();
+  }
+
+  jv_free(handle);
+  return input;
 }
 
-static jv io(jq_state *jq, jv cdata, jv input, jv arg) {
-  context* ctx = jv_cstruct_copy_get_ptr(cdata);
-  jv_free(arg);
+static jv io(jq_state *jq, jv input, jv handle, jv method) {
+  jv_free(method);
+
+  context* ctx = jv_cstruct_copy_get_ptr(handle);
 
   jv result = jv_invalid();
 
@@ -59,25 +69,16 @@ static jv io(jq_state *jq, jv cdata, jv input, jv arg) {
     result = MAKE_ERROR_CLOSED();
   }
 
-  jv_free(cdata);
+  jv_free(handle);
   return result;
 }
 
 static void free_context(context * ctx) {
   jq_teardown(&(ctx->child));
   jv_free(ctx->input);
-  jv_free(ctx->err);
-
 
   jv_mem_free(ctx);
 }
-
-static struct jq_io_table co_iot = {
-  .io = io,
-  .stat = stat,
-  .reset = reset,
-  .close = close
-};
 
 static jv coinput_cb(jq_state *child, context * ctx) {
   jv ret = ctx->input;
@@ -85,16 +86,23 @@ static jv coinput_cb(jq_state *child, context * ctx) {
   return ret;
 }
 
-
-static jv make_context(jq_state* child) {
+static jv make_handle(jq_state* child, jv uri) {
   context * ctx = jv_mem_alloc(sizeof(context));
-  ctx->iot = co_iot;
   ctx->child = child;
   ctx->input = jv_invalid();
 
   jq_set_input_cb(child, (jq_input_cb)coinput_cb, ctx);
 
-  return jv_cstruct(ctx, (jv_cstruct_free_f)free_context);
+  return JV_OBJECT(
+    jv_string(JQ_IO_HANDLE_KEY_CONTEXT), jv_cstruct(ctx, (jv_cstruct_free_f)free_context),
+    jv_string(JQ_IO_HANDLE_KEY_METHODS), JV_OBJECT (
+      jv_string(JQ_IO_METHOD_DEFAULT), jv_cstruct(io, NULL),
+      jv_string(JQ_IO_METHOD_RESET), jv_cstruct(reset, NULL),
+      jv_string(JQ_IO_METHOD_CLOSE), jv_cstruct(close, NULL),
+      jv_string(JQ_IO_METHOD_EOF), jv_cstruct(eof, NULL)
+    ),
+    jv_string(JQ_IO_HANDLE_KEY_URI), uri
+  );
 }
 
 
@@ -136,9 +144,7 @@ jv jq_io_coexpr_handle_create(jq_state *parent, uint16_t* start_pc, jv input){
 
   jq_start(child, input, parent->debug_flags);
 
-  jv jctx = make_context(child);
-
-  return jq_io_handle_make(parent, jv_string_fmt("builtin:coexpr:%p", child), jctx);
+  return make_handle(child, jv_string_fmt("%s:coexpr:%p", JQ_IO_SCHEME_BUILTIN, child));
 }
 
 
@@ -251,7 +257,5 @@ jv jq_io_coeval_handle_create(jq_state* parent, jv input, jv program) {
 
   jq_start(child, input, parent->debug_flags);
 
-  jv jctx = make_context(child);
-
-  return jq_io_handle_make(parent, jv_string_fmt("builtin:coeval:%p", child), jctx);
+  return make_handle(child, jv_string_fmt("%s:coeval:%p", JQ_IO_SCHEME_BUILTIN, child));
 }
