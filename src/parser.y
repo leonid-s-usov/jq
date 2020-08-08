@@ -100,6 +100,7 @@ struct lexer_param;
 %precedence FUNCDEF
 %right '|'
 %left ','
+// %precedence BREAK
 %right "//"
 %nonassoc '=' SETPIPE SETPLUS SETMINUS SETMULT SETDIV SETMOD SETDEFINEDOR
 %left OR
@@ -124,6 +125,7 @@ struct lexer_param;
 %type <blk> Param Params Arg Args
 %type <blk> Patterns Pattern ArrayPats ObjPats ObjPat
 %type <blk> HandleMethodSpec HandleRefSpec
+%type <blk> Break
 %type <literal> Keyword
 %{
 #include "lexer.h"
@@ -560,6 +562,10 @@ Term {
 
 HandleMethodSpec '@' HandleRefSpec {
   $$ = gen_location(@$, locations, gen_handle_call($1, $3));
+} |
+
+Break {
+  $$ = $1;
 }
 
 
@@ -583,6 +589,25 @@ IDENT {
 '(' Exp ')' {
   $$ = $2;
 } 
+
+Break:
+BREAK {
+  $$ = gen_op_const(BACKTRACK_N, jv_number(1));
+} |
+BREAK LITERAL {
+  $$ = gen_op_const(BACKTRACK_N, $2);
+} |
+BREAK '$' IDENT {
+  jv v = jv_string_fmt("*label-%s", jv_string_value($3));     // impossible symbol
+  $$ = gen_location(@$, locations,
+                    gen_op_unbound(BACKTRACK_PC, jv_string_value(v)));
+  jv_free(v);
+  jv_free($3);
+} |
+BREAK error {
+  FAIL(@$, "`break <arg>` requires a label to break to, or a non-negative integer to bypass N forkpoints");
+  $$ = gen_noop();
+}
 
 Import:
 ImportWhat ';' {
@@ -722,20 +747,6 @@ Term:
 } |
 REC {
   $$ = gen_call("recurse", gen_noop());
-} |
-BREAK '$' IDENT {
-  jv v = jv_string_fmt("*label-%s", jv_string_value($3));     // impossible symbol
-  $$ = gen_location(@$, locations,
-                    gen_op_unbound(BACKTRACK_PC, jv_string_value(v)));
-  jv_free(v);
-  jv_free($3);
-} |
-BREAK error {
-  FAIL(@$, "break requires a label to break to");
-  $$ = gen_noop();
-} |
-BREAK LITERAL {
-  $$ = gen_op_const(BACKTRACK_N, $2);
 } |
 Term FIELD '?' {
   $$ = gen_index_opt($1, gen_const($2));

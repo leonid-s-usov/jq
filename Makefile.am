@@ -48,7 +48,7 @@ endif
 # Tell YACC (bison) autoconf macros that you want a header file created.
 # If the --warnings=all fails, you probably have an old version of bison
 # OSX ships an old bison, so update with homebrew or macports
-AM_YFLAGS = --warnings=all -d
+AM_YFLAGS = --warnings=all --warnings=no-yacc -d
 
 ### libjq
 
